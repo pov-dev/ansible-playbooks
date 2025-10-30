@@ -1,0 +1,38 @@
+---
+- name: Check for DNF updates on RHEL 9
+  hosts: all
+  become: yes  # Required for dnf operations
+
+  tasks:
+    - name: Check for available updates and register the result
+      ansible.builtin.dnf:
+        list: updates
+        update_cache: yes
+      register: dnf_updates_check
+      # The 'list: updates' parameter retrieves the list of updates
+      # 'update_cache: yes' ensures the package cache is fresh
+
+    - name: Set a flag if updates are available
+      ansible.builtin.set_fact:
+        updates_available: "{{ dnf_updates_check.results | length > 0 }}"
+        update_list: "{{ dnf_updates_check.results }}"
+
+    - name: Report if updates are found
+      ansible.builtin.debug:
+        msg: "Updates are available! Found {{ update_list | length }} update(s)."
+      when: updates_available | bool
+
+    - name: Display the list of available updates (if found)
+      ansible.builtin.debug:
+        msg: "  - {{ item.name }}-{{ item.version }}.{{ item.release }}"
+      loop: "{{ update_list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: updates_available | bool
+      # Note: The structure of item.version and item.release can vary slightly
+      # depending on the package type and Ansible version.
+
+    - name: Report if no updates are found
+      ansible.builtin.debug:
+        msg: "No DNF updates are currently available."
+      when: not updates_available | bool
