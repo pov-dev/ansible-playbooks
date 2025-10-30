@@ -1,0 +1,12 @@
+---
+- name: Configure SELinux to Permissive on RHEL 9
+  hosts: all
+  become: yes  # Required to make system-level changes
+
+  tasks:
+    - name: Ensure SELinux is set to permissive mode
+      ansible.posix.selinux:
+        state: permissive
+        policy: targeted
+      # This task changes the running mode and updates the /etc/selinux/config file
+      # for persistence across reboots.
