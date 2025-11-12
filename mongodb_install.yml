@@ -111,21 +111,9 @@
         state: started
         enabled: yes
 
-    - name: Open MongoDB port (27017) in firewalld
-      ansible.posix.firewalld:
-        port: 27017/tcp
-        permanent: yes
-        state: enabled
-      notify: Reload firewalld
-
   handlers:
     - name: Restart MongoDB
       ansible.builtin.service:
         name: mongod
         state: restarted
-
-    - name: Reload firewalld
-      ansible.builtin.service:
-        name: firewalld
-        state: reloaded
 
