@@ -1,0 +1,98 @@
+---
+- name: Uninstall MongoDB and revert all installation changes
+  hosts: all
+  gather_facts: true
+  become: true
+  tasks:
+    - name: Check if MongoDB process is running
+      shell: pgrep -f "mongod --dbpath"
+      register: mongodb_process
+      failed_when: false
+      changed_when: false
+
+    - name: Stop MongoDB process if running
+      shell: pkill -f "mongod --dbpath"
+      when: mongodb_process.rc == 0
+      failed_when: false
+      changed_when: mongodb_process.rc == 0
+
+    - name: Wait for MongoDB process to stop
+      wait_for:
+        timeout: 10
+      when: mongodb_process.rc == 0
+
+    - name: Remove MongoDB binary files from /usr/local/sbin
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /usr/local/sbin/mongod
+        - /usr/local/sbin/mongos
+        - /usr/local/sbin/mongoexport
+        - /usr/local/sbin/mongoimport
+        - /usr/local/sbin/mongodump
+        - /usr/local/sbin/mongorestore
+        - /usr/local/sbin/mongostat
+        - /usr/local/sbin/mongotop
+        - /usr/local/sbin/bsondump
+        - /usr/local/sbin/mongofiles
+        - /usr/local/sbin/mongoreplay
+        - /usr/local/sbin/mongoperf
+      ignore_errors: yes
+
+    - name: Remove extracted MongoDB directory from /u01
+      file:
+        path: /u01/mongodb-linux-s390x-enterprise-rhel83-6.0.1
+        state: absent
+
+    - name: Uninstall mongosh RPM
+      yum:
+        name: mongodb-mongosh
+        state: absent
+      ignore_errors: yes
+
+    - name: Uninstall mongodb-database-tools RPM
+      yum:
+        name: mongodb-database-tools
+        state: absent
+      ignore_errors: yes
+
+    - name: Remove MongoDB data directory
+      file:
+        path: /var/lib/mongo
+        state: absent
+
+    - name: Remove MongoDB log directory
+      file:
+        path: /var/log/mongodb
+        state: absent
+
+    - name: Remove mongod system user
+      user:
+        name: mongod
+        state: absent
+        remove: yes
+      ignore_errors: yes
+
+    - name: Remove mongodb system group
+      group:
+        name: mongodb
+        state: absent
+      ignore_errors: yes
+
+    - name: Uninstall cyrus-sasl dependency (optional)
+      package:
+        name: cyrus-sasl
+        state: absent
+      ignore_errors: yes
+
+    - name: Verify MongoDB binaries are removed
+      shell: which mongod
+      register: mongod_check
+      failed_when: false
+      changed_when: false
+
+    - name: Display uninstall status
+      debug:
+        msg: "MongoDB uninstallation completed. mongod binary found: {{ mongod_check.rc == 0 }}"
+
