@@ -16,14 +16,6 @@
         enabled: no
       ignore_errors: yes
 
-    - name: Remove MongoDB port (27017) from firewalld
-      ansible.posix.firewalld:
-        port: 27017/tcp
-        permanent: yes
-        state: disabled
-      notify: Reload firewalld
-      ignore_errors: yes
-
     - name: Remove MongoDB configuration file
       ansible.builtin.file:
         path: /etc/mongod.conf
@@ -80,10 +72,4 @@
         state: absent
       # WARNING: This will delete all MongoDB data!
       # Comment out or remove this task if you want to preserve data
-
-  handlers:
-    - name: Reload firewalld
-      ansible.builtin.service:
-        name: firewalld
-        state: reloaded
 
