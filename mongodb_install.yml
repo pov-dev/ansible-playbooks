@@ -82,8 +82,6 @@
           # Where and how to store data.
           storage:
             dbPath: /var/lib/mongo
-            journal:
-              enabled: true
           
           # how the process runs
           processManagement:
