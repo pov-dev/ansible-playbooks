@@ -1,6 +1,6 @@
 ---
 - name: Install MongoDB on localhost.
-  hosts: localhost
+  hosts: all
   gather_facts: true
   become: true
   tasks:
