@@ -1,98 +1,89 @@
 ---
-- name: Uninstall MongoDB and revert all installation changes
+- name: Uninstall and remove MongoDB from RHEL 9
   hosts: all
-  gather_facts: true
-  become: true
+  become: yes  # Run tasks with root privileges
+
   tasks:
-    - name: Check if MongoDB process is running
-      shell: pgrep -f "mongod --dbpath"
-      register: mongodb_process
-      failed_when: false
+    - name: Stop MongoDB service
+      ansible.builtin.systemd:
+        name: mongod
+        state: stopped
+      ignore_errors: yes
+
+    - name: Disable MongoDB service
+      ansible.builtin.systemd:
+        name: mongod
+        enabled: no
+      ignore_errors: yes
+
+    - name: Remove MongoDB port (27017) from firewalld
+      ansible.posix.firewalld:
+        port: 27017/tcp
+        permanent: yes
+        state: disabled
+      notify: Reload firewalld
+      ignore_errors: yes
+
+    - name: Remove MongoDB configuration file
+      ansible.builtin.file:
+        path: /etc/mongod.conf
+        state: absent
+
+    - name: Remove MongoDB packages
+      ansible.builtin.dnf:
+        name:
+          - mongodb-org
+          - mongodb-org-server
+          - mongodb-org-mongos
+          - mongodb-org-shell
+          - mongodb-org-tools
+        state: absent
+      ignore_errors: yes
+
+    - name: Remove MongoDB repository file
+      ansible.builtin.file:
+        path: /etc/yum.repos.d/mongodb-org-7.0.repo
+        state: absent
+
+    - name: Get MongoDB GPG key ID
+      ansible.builtin.shell:
+        cmd: rpm -qa gpg-pubkey --qf '%{NAME}-%{VERSION}-%{RELEASE}\n' | grep -i mongodb || true
+      register: mongodb_gpg_keys
       changed_when: false
-
-    - name: Stop MongoDB process if running
-      shell: pkill -f "mongod --dbpath"
-      when: mongodb_process.rc == 0
       failed_when: false
-      changed_when: mongodb_process.rc == 0
 
-    - name: Wait for MongoDB process to stop
-      wait_for:
-        timeout: 10
-      when: mongodb_process.rc == 0
-
-    - name: Remove MongoDB binary files from /usr/local/sbin
-      file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - /usr/local/sbin/mongod
-        - /usr/local/sbin/mongos
-        - /usr/local/sbin/mongoexport
-        - /usr/local/sbin/mongoimport
-        - /usr/local/sbin/mongodump
-        - /usr/local/sbin/mongorestore
-        - /usr/local/sbin/mongostat
-        - /usr/local/sbin/mongotop
-        - /usr/local/sbin/bsondump
-        - /usr/local/sbin/mongofiles
-        - /usr/local/sbin/mongoreplay
-        - /usr/local/sbin/mongoperf
+    - name: Remove MongoDB GPG key from RPM
+      ansible.builtin.command:
+        cmd: rpm -e {{ item }}
+      loop: "{{ mongodb_gpg_keys.stdout_lines }}"
+      when: mongodb_gpg_keys.stdout_lines | length > 0
       ignore_errors: yes
 
-    - name: Remove extracted MongoDB directory from /u01
-      file:
-        path: /u01/mongodb-linux-s390x-enterprise-rhel83-6.0.1
+    - name: Remove temporary GPG key file
+      ansible.builtin.file:
+        path: /tmp/mongodb-server-7.0.asc
         state: absent
 
-    - name: Uninstall mongosh RPM
-      yum:
-        name: mongodb-mongosh
-        state: absent
-      ignore_errors: yes
-
-    - name: Uninstall mongodb-database-tools RPM
-      yum:
-        name: mongodb-database-tools
-        state: absent
-      ignore_errors: yes
-
-    - name: Remove MongoDB data directory
-      file:
-        path: /var/lib/mongo
+    - name: Remove MongoDB PID file directory
+      ansible.builtin.file:
+        path: /var/run/mongodb
         state: absent
 
     - name: Remove MongoDB log directory
-      file:
+      ansible.builtin.file:
         path: /var/log/mongodb
         state: absent
 
-    - name: Remove mongod system user
-      user:
-        name: mongod
+    - name: Remove MongoDB data directory
+      ansible.builtin.file:
+        path: /var/lib/mongo
         state: absent
-        remove: yes
-      ignore_errors: yes
+      # WARNING: This will delete all MongoDB data!
+      # Comment out or remove this task if you want to preserve data
 
-    - name: Remove mongodb system group
-      group:
-        name: mongodb
-        state: absent
-      ignore_errors: yes
-
-    - name: Uninstall cyrus-sasl dependency (optional)
-      package:
-        name: cyrus-sasl
-        state: absent
-      ignore_errors: yes
-
-    - name: Verify MongoDB binaries are removed
-      shell: which mongod
-      register: mongod_check
-      failed_when: false
-      changed_when: false
-
-    - name: Display uninstall status
-      debug:
-        msg: "MongoDB uninstallation completed. mongod binary found: {{ mongod_check.rc == 0 }}"
+  handlers:
+    - name: Reload firewalld
+      ansible.builtin.service:
+        name: firewalld
+        state: reloaded
 
