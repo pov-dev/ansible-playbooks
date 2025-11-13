@@ -1,0 +1,33 @@
+---
+# Example variables file for mongodb_configure.yml
+# Usage: ansible-playbook -e @mongodb_configure_vars.yml mongodb_configure.yml
+
+# MongoDB connection settings
+mongodb_host: "localhost"
+mongodb_port: 27017
+mongodb_admin_user: "admin"
+mongodb_admin_password: "admin_password"
+mongodb_auth_database: "admin"
+
+# Database configuration
+mongodb_database_name: "myapp_db"
+
+# User configuration
+mongodb_username: "app_user"
+mongodb_password: "secure_password_123"
+
+# User roles and permissions
+# Available roles: read, readWrite, dbAdmin, userAdmin, clusterAdmin, etc.
+mongodb_user_roles:
+  - role: "readWrite"
+    db: "{{ mongodb_database_name }}"
+  - role: "dbAdmin"
+    db: "{{ mongodb_database_name }}"
+
+# Connection test settings
+mongodb_test_collection: "test_collection"
+mongodb_test_document:
+  test: true
+  timestamp: "{{ ansible_date_time.iso8601 }}"
+  message: "Connection test successful"
+

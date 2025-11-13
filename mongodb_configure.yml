@@ -1,0 +1,154 @@
+---
+- name: Configure MongoDB Database and User
+  hosts: all
+  become: yes
+  vars:
+    # MongoDB connection settings
+    mongodb_host: "localhost"
+    mongodb_port: 27017
+    mongodb_admin_user: "admin"
+    mongodb_admin_password: "admin_password"
+    mongodb_auth_database: "admin"
+    
+    # Database configuration
+    mongodb_database_name: "myapp_db"
+    
+    # User configuration
+    mongodb_username: "app_user"
+    mongodb_password: "secure_password_123"
+    
+    # User roles and permissions
+    mongodb_user_roles:
+      - role: "readWrite"
+        db: "{{ mongodb_database_name }}"
+      - role: "dbAdmin"
+        db: "{{ mongodb_database_name }}"
+    
+    # Connection test settings
+    mongodb_test_collection: "test_collection"
+    mongodb_test_document:
+      test: true
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+      message: "Connection test successful"
+
+  tasks:
+    - name: Ensure MongoDB Python driver is installed
+      ansible.builtin.pip:
+        name: pymongo
+        state: present
+
+    - name: Create MongoDB database (by creating a collection)
+      community.mongodb.mongodb_collection:
+        login_host: "{{ mongodb_host }}"
+        login_port: "{{ mongodb_port }}"
+        login_user: "{{ mongodb_admin_user }}"
+        login_password: "{{ mongodb_admin_password }}"
+        login_database: "{{ mongodb_auth_database }}"
+        database: "{{ mongodb_database_name }}"
+        name: "_init"
+        state: present
+      register: db_creation_result
+
+    - name: Create MongoDB user with roles
+      community.mongodb.mongodb_user:
+        login_host: "{{ mongodb_host }}"
+        login_port: "{{ mongodb_port }}"
+        login_user: "{{ mongodb_admin_user }}"
+        login_password: "{{ mongodb_admin_password }}"
+        login_database: "{{ mongodb_auth_database }}"
+        database: "{{ mongodb_database_name }}"
+        name: "{{ mongodb_username }}"
+        password: "{{ mongodb_password }}"
+        roles: "{{ mongodb_user_roles }}"
+        state: present
+      register: user_creation_result
+
+    - name: Test MongoDB connection with new user credentials
+      community.mongodb.mongodb_collection:
+        login_host: "{{ mongodb_host }}"
+        login_port: "{{ mongodb_port }}"
+        login_user: "{{ mongodb_username }}"
+        login_password: "{{ mongodb_password }}"
+        login_database: "{{ mongodb_database_name }}"
+        database: "{{ mongodb_database_name }}"
+        name: "{{ mongodb_test_collection }}"
+        state: present
+      register: connection_test_result
+
+    - name: Insert test document to verify write permissions
+      community.mongodb.mongodb_document:
+        login_host: "{{ mongodb_host }}"
+        login_port: "{{ mongodb_port }}"
+        login_user: "{{ mongodb_username }}"
+        login_password: "{{ mongodb_password }}"
+        login_database: "{{ mongodb_database_name }}"
+        database: "{{ mongodb_database_name }}"
+        collection: "{{ mongodb_test_collection }}"
+        documents:
+          - "{{ mongodb_test_document }}"
+        state: present
+      register: write_test_result
+
+    - name: Query test document to verify read permissions
+      community.mongodb.mongodb_document:
+        login_host: "{{ mongodb_host }}"
+        login_port: "{{ mongodb_port }}"
+        login_user: "{{ mongodb_username }}"
+        login_password: "{{ mongodb_password }}"
+        login_database: "{{ mongodb_database_name }}"
+        database: "{{ mongodb_database_name }}"
+        collection: "{{ mongodb_test_collection }}"
+        filter:
+          test: true
+        state: list
+      register: read_test_result
+
+    - name: Display MongoDB configuration summary
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "MongoDB Configuration Summary"
+          - "=========================================="
+          - ""
+          - "Connection Information:"
+          - "  Host: {{ mongodb_host }}"
+          - "  Port: {{ mongodb_port }}"
+          - "  Authentication Database: {{ mongodb_auth_database }}"
+          - ""
+          - "Database Configuration:"
+          - "  Database Name: {{ mongodb_database_name }}"
+          - "  Database Created: {{ 'Yes' if db_creation_result.changed else 'Already Exists' }}"
+          - ""
+          - "User Configuration:"
+          - "  Username: {{ mongodb_username }}"
+          - "  Password: {{ mongodb_password }}"
+          - "  User Created: {{ 'Yes' if user_creation_result.changed else 'Already Exists' }}"
+          - "  User Updated: {{ 'Yes' if user_creation_result.changed else 'No Changes' }}"
+          - ""
+          - "User Roles and Permissions:"
+          - "  Roles: {{ mongodb_user_roles | to_nice_json }}"
+          - ""
+          - "Connection Test Results:"
+          - "  Connection Test: {{ 'SUCCESS' if not connection_test_result.failed else 'FAILED' }}"
+          - "  Write Test: {{ 'SUCCESS' if not write_test_result.failed else 'FAILED' }}"
+          - "  Read Test: {{ 'SUCCESS' if read_test_result.results is defined and read_test_result.results | length > 0 else 'FAILED' }}"
+          - "  Documents Found: {{ read_test_result.results | length if read_test_result.results is defined else 0 }}"
+          - ""
+          - "Connection String (for applications):"
+          - "  mongodb://{{ mongodb_username }}:{{ mongodb_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ mongodb_database_name }}?authSource={{ mongodb_database_name }}"
+          - ""
+          - "=========================================="
+
+    - name: Display detailed task results
+      ansible.builtin.debug:
+        var: item
+        verbosity: 1
+      loop:
+        - { name: "Database Creation", result: "{{ db_creation_result }}" }
+        - { name: "User Creation", result: "{{ user_creation_result }}" }
+        - { name: "Connection Test", result: "{{ connection_test_result }}" }
+        - { name: "Write Test", result: "{{ write_test_result }}" }
+        - { name: "Read Test", result: "{{ read_test_result }}" }
+      loop_control:
+        label: "{{ item.name }}"
+
