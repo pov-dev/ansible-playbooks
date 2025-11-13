@@ -1,7 +1,7 @@
 ---
 - name: Configure MongoDB Database and User
   hosts: all
-  become: yes
+  become: true
   vars:
     # MongoDB connection settings
     mongodb_host: "localhost"
@@ -9,21 +9,21 @@
     mongodb_admin_user: "admin"
     mongodb_admin_password: "admin_password"
     mongodb_auth_database: "admin"
-    
+
     # Database configuration
     mongodb_database_name: "myapp_db"
-    
+
     # User configuration
     mongodb_username: "app_user"
     mongodb_password: "secure_password_123"
-    
+
     # User roles and permissions
     mongodb_user_roles:
       - role: "readWrite"
         db: "{{ mongodb_database_name }}"
       - role: "dbAdmin"
         db: "{{ mongodb_database_name }}"
-    
+
     # Connection test settings
     mongodb_test_collection: "test_collection"
     mongodb_test_document:
@@ -38,15 +38,14 @@
         state: present
 
     - name: Create MongoDB database (by creating a collection)
-      community.mongodb.mongodb_collection:
+      community.mongodb.mongodb_shell:
         login_host: "{{ mongodb_host }}"
         login_port: "{{ mongodb_port }}"
         login_user: "{{ mongodb_admin_user }}"
         login_password: "{{ mongodb_admin_password }}"
         login_database: "{{ mongodb_auth_database }}"
-        database: "{{ mongodb_database_name }}"
-        name: "_init"
-        state: present
+        db: "{{ mongodb_database_name }}"
+        eval: "db.createCollection('_init')"
       register: db_creation_result
 
     - name: Create MongoDB user with roles
@@ -64,43 +63,36 @@
       register: user_creation_result
 
     - name: Test MongoDB connection with new user credentials
-      community.mongodb.mongodb_collection:
+      community.mongodb.mongodb_shell:
         login_host: "{{ mongodb_host }}"
         login_port: "{{ mongodb_port }}"
         login_user: "{{ mongodb_username }}"
         login_password: "{{ mongodb_password }}"
         login_database: "{{ mongodb_database_name }}"
-        database: "{{ mongodb_database_name }}"
-        name: "{{ mongodb_test_collection }}"
-        state: present
+        db: "{{ mongodb_database_name }}"
+        eval: "db.runCommand({ ping: 1 })"
       register: connection_test_result
 
     - name: Insert test document to verify write permissions
-      community.mongodb.mongodb_document:
+      community.mongodb.mongodb_shell:
         login_host: "{{ mongodb_host }}"
         login_port: "{{ mongodb_port }}"
         login_user: "{{ mongodb_username }}"
         login_password: "{{ mongodb_password }}"
         login_database: "{{ mongodb_database_name }}"
-        database: "{{ mongodb_database_name }}"
-        collection: "{{ mongodb_test_collection }}"
-        documents:
-          - "{{ mongodb_test_document }}"
-        state: present
+        db: "{{ mongodb_database_name }}"
+        eval: "db.{{ mongodb_test_collection }}.insertOne({test: true, timestamp: '{{ ansible_date_time.iso8601 }}', message: 'Connection test successful'})"
       register: write_test_result
 
     - name: Query test document to verify read permissions
-      community.mongodb.mongodb_document:
+      community.mongodb.mongodb_shell:
         login_host: "{{ mongodb_host }}"
         login_port: "{{ mongodb_port }}"
         login_user: "{{ mongodb_username }}"
         login_password: "{{ mongodb_password }}"
         login_database: "{{ mongodb_database_name }}"
-        database: "{{ mongodb_database_name }}"
-        collection: "{{ mongodb_test_collection }}"
-        filter:
-          test: true
-        state: list
+        db: "{{ mongodb_database_name }}"
+        eval: "db.{{ mongodb_test_collection }}.find({test: true}).toArray()"
       register: read_test_result
 
     - name: Display MongoDB configuration summary
@@ -131,11 +123,13 @@
           - "Connection Test Results:"
           - "  Connection Test: {{ 'SUCCESS' if not connection_test_result.failed else 'FAILED' }}"
           - "  Write Test: {{ 'SUCCESS' if not write_test_result.failed else 'FAILED' }}"
-          - "  Read Test: {{ 'SUCCESS' if read_test_result.results is defined and read_test_result.results | length > 0 else 'FAILED' }}"
-          - "  Documents Found: {{ read_test_result.results | length if read_test_result.results is defined else 0 }}"
+          - "  Read Test: {{ 'SUCCESS' if read_test_result.stdout is defined and read_test_result.stdout | length > 0 else 'FAILED' }}"
+          - "  Read Test Output: {{ read_test_result.stdout | default('No output') }}"
           - ""
           - "Connection String (for applications):"
-          - "  mongodb://{{ mongodb_username }}:{{ mongodb_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ mongodb_database_name }}?authSource={{ mongodb_database_name }}"
+          - "  mongodb://{{ mongodb_username }}:{{ mongodb_password }}"
+          - "  @{{ mongodb_host }}:{{ mongodb_port }}/{{ mongodb_database_name }}"
+          - "  ?authSource={{ mongodb_database_name }}"
           - ""
           - "=========================================="
 
@@ -151,4 +145,3 @@
         - { name: "Read Test", result: "{{ read_test_result }}" }
       loop_control:
         label: "{{ item.name }}"
-
