@@ -50,16 +50,22 @@
         state: started
         enabled: true
 
+    - name: Set MongoDB connection host to 127.0.0.1 for local connections
+      ansible.builtin.set_fact:
+        mongodb_connection_host: "127.0.0.1"
+      # MongoDB is configured to bind to 127.0.0.1 in mongodb_install.yml
+      # Always use 127.0.0.1 for local connections regardless of mongodb_host variable
+
     - name: Wait for MongoDB to be ready
       ansible.builtin.wait_for:
         port: "{{ mongodb_port }}"
-        host: "{{ mongodb_host }}"
+        host: "{{ mongodb_connection_host }}"
         delay: 2
         timeout: 30
 
     - name: Create MongoDB database (by creating a collection)
       community.mongodb.mongodb_shell:
-        login_host: "{{ mongodb_host }}"
+        login_host: "{{ mongodb_connection_host }}"
         login_port: "{{ mongodb_port }}"
         login_user: "{{ mongodb_admin_user }}"
         login_password: "{{ mongodb_admin_password }}"
@@ -70,7 +76,7 @@
 
     - name: Create MongoDB user with roles
       community.mongodb.mongodb_user:
-        login_host: "{{ mongodb_host }}"
+        login_host: "{{ mongodb_connection_host }}"
         login_port: "{{ mongodb_port }}"
         login_user: "{{ mongodb_admin_user }}"
         login_password: "{{ mongodb_admin_password }}"
@@ -84,7 +90,7 @@
 
     - name: Test MongoDB connection with new user credentials
       community.mongodb.mongodb_shell:
-        login_host: "{{ mongodb_host }}"
+        login_host: "{{ mongodb_connection_host }}"
         login_port: "{{ mongodb_port }}"
         login_user: "{{ mongodb_username }}"
         login_password: "{{ mongodb_password }}"
@@ -95,7 +101,7 @@
 
     - name: Insert test document to verify write permissions
       community.mongodb.mongodb_shell:
-        login_host: "{{ mongodb_host }}"
+        login_host: "{{ mongodb_connection_host }}"
         login_port: "{{ mongodb_port }}"
         login_user: "{{ mongodb_username }}"
         login_password: "{{ mongodb_password }}"
@@ -106,7 +112,7 @@
 
     - name: Query test document to verify read permissions
       community.mongodb.mongodb_shell:
-        login_host: "{{ mongodb_host }}"
+        login_host: "{{ mongodb_connection_host }}"
         login_port: "{{ mongodb_port }}"
         login_user: "{{ mongodb_username }}"
         login_password: "{{ mongodb_password }}"
@@ -123,7 +129,7 @@
           - "=========================================="
           - ""
           - "Connection Information:"
-          - "  Host: {{ mongodb_host }}"
+          - "  Host: {{ mongodb_connection_host }}"
           - "  Port: {{ mongodb_port }}"
           - "  Authentication Database: {{ mongodb_auth_database }}"
           - ""
@@ -148,7 +154,7 @@
           - ""
           - "Connection String (for applications):"
           - "  mongodb://{{ mongodb_username }}:{{ mongodb_password }}"
-          - "  @{{ mongodb_host }}:{{ mongodb_port }}/{{ mongodb_database_name }}"
+          - "  @{{ mongodb_connection_host }}:{{ mongodb_port }}/{{ mongodb_database_name }}"
           - "  ?authSource={{ mongodb_database_name }}"
           - ""
           - "=========================================="
