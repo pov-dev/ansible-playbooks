@@ -130,7 +130,15 @@
         delay: 5
         timeout: 30
 
-    - name: Create MongoDB admin user
+    - name: Check if MongoDB authentication is enabled
+      ansible.builtin.shell: |
+        grep -q "authorization: enabled" /etc/mongod.conf 2>/dev/null && echo "enabled" || echo "disabled"
+      register: mongodb_auth_status
+      changed_when: false
+      failed_when: false
+      when: mongodb_admin_user is defined and mongodb_admin_user is not none
+
+    - name: Create MongoDB admin user (without auth)
       community.mongodb.mongodb_user:
         login_host: "127.0.0.1"
         login_port: 27017
@@ -148,7 +156,34 @@
             db: "admin"
         state: present
       register: admin_user_result
-      when: mongodb_admin_user is defined and mongodb_admin_user is not none
+      when: 
+        - mongodb_admin_user is defined and mongodb_admin_user is not none
+        - mongodb_auth_status.stdout | default('disabled') == 'disabled'
+
+    - name: Create or update MongoDB admin user (with auth)
+      community.mongodb.mongodb_user:
+        login_host: "127.0.0.1"
+        login_port: 27017
+        login_user: "{{ mongodb_admin_user }}"
+        login_password: "{{ mongodb_admin_password }}"
+        login_database: "{{ mongodb_auth_database }}"
+        database: "{{ mongodb_auth_database }}"
+        name: "{{ mongodb_admin_user }}"
+        password: "{{ mongodb_admin_password }}"
+        roles:
+          - role: "userAdminAnyDatabase"
+            db: "admin"
+          - role: "readWriteAnyDatabase"
+            db: "admin"
+          - role: "dbAdminAnyDatabase"
+            db: "admin"
+          - role: "clusterAdmin"
+            db: "admin"
+        state: present
+      register: admin_user_result
+      when: 
+        - mongodb_admin_user is defined and mongodb_admin_user is not none
+        - mongodb_auth_status.stdout | default('disabled') == 'enabled'
 
     - name: Update MongoDB config to enable authentication
       ansible.builtin.copy:
@@ -186,13 +221,17 @@
         group: root
         mode: '0644'
         backup: true
-      when: mongodb_admin_user is defined and mongodb_admin_user is not none
+      when: 
+        - mongodb_admin_user is defined and mongodb_admin_user is not none
+        - mongodb_auth_status.stdout | default('disabled') == 'disabled'
 
     - name: Restart MongoDB to enable authentication
       ansible.builtin.systemd:
         name: mongod
         state: restarted
-      when: mongodb_admin_user is defined and mongodb_admin_user is not none
+      when: 
+        - mongodb_admin_user is defined and mongodb_admin_user is not none
+        - mongodb_auth_status.stdout | default('disabled') == 'disabled'
 
     - name: Wait for MongoDB to be ready after restart
       ansible.builtin.wait_for:
@@ -200,7 +239,9 @@
         host: 127.0.0.1
         delay: 5
         timeout: 30
-      when: mongodb_admin_user is defined and mongodb_admin_user is not none
+      when: 
+        - mongodb_admin_user is defined and mongodb_admin_user is not none
+        - mongodb_auth_status.stdout | default('disabled') == 'disabled'
 
     - name: Display MongoDB admin user information
       ansible.builtin.debug:
