@@ -1,7 +1,12 @@
 ---
 - name: Install and configure MongoDB on RHEL 9
   hosts: all
-  become: yes  # Run tasks with root privileges
+  become: true  # Run tasks with root privileges
+  vars:
+    # MongoDB admin user configuration
+    mongodb_admin_user: "admin"
+    mongodb_admin_password: "admin_password"
+    mongodb_auth_database: "admin"
 
   tasks:
     - name: Install required packages for MongoDB repository
@@ -39,7 +44,7 @@
         name:
           - mongodb-org
         state: present
-        update_cache: yes
+        update_cache: true
 
     - name: Create MongoDB data directory
       ansible.builtin.file:
@@ -65,53 +70,158 @@
         group: mongod
         mode: '0755'
 
-    - name: Configure MongoDB (mongod.conf)
+    - name: Configure MongoDB (mongod.conf) - initial config without auth
       ansible.builtin.copy:
         content: |
           # mongod.conf
-          
+
           # for documentation of all options, see:
           #   http://docs.mongodb.org/manual/reference/configuration-options/
-          
+
           # Where to write logging data.
           systemLog:
             destination: file
             logAppend: true
             path: /var/log/mongodb/mongod.log
-          
+
           # Where and how to store data.
           storage:
             dbPath: /var/lib/mongo
-          
+
           # how the process runs
           processManagement:
             fork: true
             pidFilePath: /var/run/mongodb/mongod.pid
             timeZoneInfo: /usr/share/zoneinfo
-          
+
           # network interfaces
           net:
             port: 27017
             bindIp: 127.0.0.1
-          
-          #security:
-          #  authorization: enabled
+
+          # security will be enabled after admin user is created
         dest: /etc/mongod.conf
         owner: root
         group: root
         mode: '0644'
-        backup: yes
+        backup: true
       notify: Restart MongoDB
 
-    - name: Ensure MongoDB service is running and enabled
+    - name: Ensure MongoDB service is running and enabled (without auth initially)
       ansible.builtin.systemd:
         name: mongod
         state: started
-        enabled: yes
+        enabled: true
+
+    - name: Ensure pip is installed
+      ansible.builtin.dnf:
+        name: python3-pip
+        state: present
+
+    - name: Ensure MongoDB Python driver is installed
+      ansible.builtin.pip:
+        name: pymongo
+        state: present
+
+    - name: Wait for MongoDB to be ready
+      ansible.builtin.wait_for:
+        port: 27017
+        host: 127.0.0.1
+        delay: 5
+        timeout: 30
+
+    - name: Create MongoDB admin user
+      community.mongodb.mongodb_user:
+        login_host: "127.0.0.1"
+        login_port: 27017
+        database: "{{ mongodb_auth_database }}"
+        name: "{{ mongodb_admin_user }}"
+        password: "{{ mongodb_admin_password }}"
+        roles:
+          - role: "userAdminAnyDatabase"
+            db: "admin"
+          - role: "readWriteAnyDatabase"
+            db: "admin"
+          - role: "dbAdminAnyDatabase"
+            db: "admin"
+          - role: "clusterAdmin"
+            db: "admin"
+        state: present
+      register: admin_user_result
+      when: mongodb_admin_user is defined and mongodb_admin_user is not none
+
+    - name: Update MongoDB config to enable authentication
+      ansible.builtin.copy:
+        content: |
+          # mongod.conf
+
+          # for documentation of all options, see:
+          #   http://docs.mongodb.org/manual/reference/configuration-options/
+
+          # Where to write logging data.
+          systemLog:
+            destination: file
+            logAppend: true
+            path: /var/log/mongodb/mongod.log
+
+          # Where and how to store data.
+          storage:
+            dbPath: /var/lib/mongo
+
+          # how the process runs
+          processManagement:
+            fork: true
+            pidFilePath: /var/run/mongodb/mongod.pid
+            timeZoneInfo: /usr/share/zoneinfo
+
+          # network interfaces
+          net:
+            port: 27017
+            bindIp: 127.0.0.1
+
+          security:
+            authorization: enabled
+        dest: /etc/mongod.conf
+        owner: root
+        group: root
+        mode: '0644'
+        backup: true
+      when: mongodb_admin_user is defined and mongodb_admin_user is not none
+
+    - name: Restart MongoDB to enable authentication
+      ansible.builtin.systemd:
+        name: mongod
+        state: restarted
+      when: mongodb_admin_user is defined and mongodb_admin_user is not none
+
+    - name: Wait for MongoDB to be ready after restart
+      ansible.builtin.wait_for:
+        port: 27017
+        host: 127.0.0.1
+        delay: 5
+        timeout: 30
+      when: mongodb_admin_user is defined and mongodb_admin_user is not none
+
+    - name: Display MongoDB admin user information
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "MongoDB Admin User Configuration"
+          - "=========================================="
+          - "Admin Username: {{ mongodb_admin_user }}"
+          - "Admin Password: {{ mongodb_admin_password }}"
+          - "Auth Database: {{ mongodb_auth_database }}"
+          - "Admin User Created: {{ 'Yes' if admin_user_result.changed | default(false) else 'Already Exists' }}"
+          - ""
+          - "Connection String:"
+          - "  mongodb://{{ mongodb_admin_user }}:{{ mongodb_admin_password }}"
+          - "  @127.0.0.1:27017/{{ mongodb_auth_database }}"
+          - "  ?authSource={{ mongodb_auth_database }}"
+          - "=========================================="
+      when: mongodb_admin_user is defined and mongodb_admin_user is not none
 
   handlers:
     - name: Restart MongoDB
       ansible.builtin.service:
         name: mongod
         state: restarted
-
