@@ -32,6 +32,11 @@
       message: "Connection test successful"
 
   tasks:
+    - name: Ensure pip is installed
+      ansible.builtin.dnf:
+        name: python3-pip
+        state: present
+
     - name: Ensure MongoDB Python driver is installed
       ansible.builtin.pip:
         name: pymongo
