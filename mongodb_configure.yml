@@ -4,7 +4,9 @@
   become: true
   vars:
     # MongoDB connection settings
-    mongodb_host: "localhost"
+    # Use 127.0.0.1 instead of hostname to avoid connection issues
+    # MongoDB is configured to bind to 127.0.0.1 in mongodb_install.yml
+    mongodb_host: "127.0.0.1"
     mongodb_port: 27017
     mongodb_admin_user: "admin"
     mongodb_admin_password: "admin_password"
@@ -41,6 +43,19 @@
       ansible.builtin.pip:
         name: pymongo
         state: present
+
+    - name: Ensure MongoDB service is running
+      ansible.builtin.systemd:
+        name: mongod
+        state: started
+        enabled: true
+
+    - name: Wait for MongoDB to be ready
+      ansible.builtin.wait_for:
+        port: "{{ mongodb_port }}"
+        host: "{{ mongodb_host }}"
+        delay: 2
+        timeout: 30
 
     - name: Create MongoDB database (by creating a collection)
       community.mongodb.mongodb_shell:

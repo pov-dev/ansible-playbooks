@@ -3,7 +3,9 @@
 # Usage: ansible-playbook -e @mongodb_configure_vars.yml mongodb_configure.yml
 
 # MongoDB connection settings
-mongodb_host: "localhost"
+# Use 127.0.0.1 instead of hostname to avoid connection issues
+# MongoDB is configured to bind to 127.0.0.1 in mongodb_install.yml
+mongodb_host: "127.0.0.1"
 mongodb_port: 27017
 mongodb_admin_user: "admin"
 mongodb_admin_password: "admin_password"
